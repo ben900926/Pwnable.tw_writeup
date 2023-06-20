@@ -1,23 +1,24 @@
 # Pwnable.tw -- Calc (150 pts)
 (Some contents are refered to [this post](https://medium.com/@sagidana/calc-pwnable-tw-ef5450f40253))
 
-The main code is in calc
-As we can see in 'dissass calc', the calc function calls get_expr, init_pool, and parse_expr
-We can further what these functions do using Ghidra
+The main code is in calc  
+As we can see in 'dissass calc', the calc function calls get_expr, init_pool, and parse_expr  
+We can further what these functions do using Ghidra  
 
 ## Ghidra
-- get_expr: it takes a char array and a limit as inputs, then read from stdin for one byte until exceed the limit (0x400).
-also, if it reads newline or an error, the loop ends. Input only accept +-*/% and '0'~'9'.
-It will return the read size. Nothing vulnerable here...
+- get_expr: it takes a char array and a limit as inputs, then read from stdin for one byte until exceed the limit (0x400).  
+also, if it reads newline or an error, the loop ends. Input only accept +-*/% and '0'~'9'.  
+It will return the read size. Nothing vulnerable here...  
 - init_pool: just fill a pointer with 0 (len 100)
 
 - parse_expr: things getting fishy in this function. The amount of new declared variables is driving me dizzy...
+
 The read formula in "get_expr" and a blank int pointer will serve as inputs. 
-The int pointer will be used to store numeraic values. (atoi)
-it works somehow like this..
-first copy "idx" bytes from operation input
-** Note if there's 0, program will raise error
-and try atoi the previous byte before operator, see if it is number
+The int pointer will be used to store numeraic values. (atoi)  
+it works somehow like this..  
+first copy "idx" bytes from operation input  
+** Note if there's 0, program will raise error  
+and try atoi the previous byte before operator, see if it is number  
 
 Let's say the formula is "1 + 4 * 3 / 2"
 
@@ -29,7 +30,7 @@ idx = 1:
 num_arr = [1, ]
 op_arr = [+, ]
 
-in the operation loop:
+in the operation loop:  
 first time encounter op, just write it to op_arr
 later, if there's already an op...
 if the current op. is '*','/','%'
@@ -39,7 +40,7 @@ if current op. is not '+''-', it will be evaled (multply first, addition last!)
 
 **  some expression such as "100 +", "100 + -" are also filtered
 
-when read to EOF of operations, all expression will be evaled backwards
+when read to EOF of operations, all expression will be evaled backwards  
 
 
 ## Vulenrability
@@ -140,8 +141,8 @@ need to find pop eax, ret --> RopGadget
 - 0x080701d0 : pop edx ; pop ecx ; pop ebx ; ret
 - 0x08049a21 : int 0x80
 
-| 0x0805c34b  | 0xb |  ... | xxx |  
-    pop eax                 int 0x80
+    | 0x0805c34b  | 0xb |  ... | xxx |  
+        pop eax                 int 0x80
 
 #### stack issue
 To start the ROP chain, we rewrite the return addr with first address (0x0805c34b)
@@ -149,17 +150,22 @@ To start the ROP chain, we rewrite the return addr with first address (0x0805c34
 
 We can simply put the string behind, like this
 
-      pop eax      362                 $edx       $ecx    $ebx     int 0x80      368            370
-   | 0x0805c34b  | 0xb | 0x080701d0 |  (369)  |  (368) |  (370) |  0x08049a21 |  370  |  \0  | /bin | /sh\0 |
+```
+    pop eax      362                 $edx       $ecx    $ebx     int 0x80      368            370
+| 0x0805c34b  | 0xb | 0x080701d0 |  (369)  |  (368) |  (370) |  0x08049a21 |  370  |  \0  | /bin | /sh\0 |
+```
 
 #### How to find esp address ?
 break at 0x8049433 (where calc's "return" is located)
 then print 100 lines starting from $esp-4
 
+```
 (gdb) x/100x $esp-4
 0xff960ac8:     0xff960ae8 (old rbp)       0x08049499 (return addr)     0x080ec200      0x08049434
 0xff960ad8:     0xff960b7c                 0x080481b0                   0x00000000      0x080ec00c
 ...
+```
+
 esp is point to 0xff96ac4, so the distance between old and new ebp is 28
 
 ### skip signal
